@@ -22,10 +22,9 @@ namespace Reverb
         //Lejátszáshoz használandó változók
         int _stream = 0,
             _updateInterval = 50,
-            _tickCounter = 0,
-            NextTrackSyncHandle = 0;
+            _tickCounter = 0;
         BASSTimer _updateTimer = null;
-        Visuals _vis = new Visuals();
+        //Visuals _vis = new Visuals();
         SYNCPROC pausefading = null, nexttrack = null;
         bool paused = false;
         #endregion
@@ -48,11 +47,12 @@ namespace Reverb
             pausefading = new SYNCPROC(delegate(int handle, int channel, int data, IntPtr user)
             {
                 if (paused)
-                    Bass.BASS_ChannelPause(_stream);
-            });
+                    Bass.BASS_ChannelPause(channel);
+            });           
 
             nexttrack = new SYNCPROC(delegate(int handle, int channel, int data, IntPtr user)
             {
+                playlist_stop_Click(null, EventArgs.Empty);
                 if (playlist.Rows.Count > playlist.CurrentRow.Index + 1)
                 {
                     playlist_forward_Click(null, EventArgs.Empty);
@@ -94,9 +94,11 @@ namespace Reverb
                 }
 
                 //BackgroundWorker inicializálása a fájlinfok háttérben lekérdezéséhez
-                BackgroundWorker _bw = new BackgroundWorker();
-                _bw.DoWork += new DoWorkEventHandler(ProcessFileTags);
-                _bw.RunWorkerAsync();
+                using (BackgroundWorker _bw = new BackgroundWorker())
+                {
+                    _bw.DoWork += new DoWorkEventHandler(ProcessFileTags);
+                    _bw.RunWorkerAsync();
+                }
             }
 
         }
@@ -164,7 +166,7 @@ namespace Reverb
                 // the stream is NOT playing anymore...
                 _updateTimer.Stop();
                 /*pictureBox1.Image = null;*/
-                playlist_play.Text = "Play";
+                //playlist_play.Text = "Play";
                 return;
             }
 
@@ -240,7 +242,14 @@ namespace Reverb
             }
             else
             {
-                if (0 != playlist.RowCount && playlist.SelectedRows[0].Index != -1)
+                //Ha lejátszás folyamatban van, akkor azt kilőjjük
+                if (0 != _stream || Bass.BASS_ChannelIsActive(_stream) != BASSActive.BASS_ACTIVE_STOPPED)
+                {
+                    playlist_stop_Click(null, EventArgs.Empty);
+                }
+
+                //Van kijelölve egyáltalán valami lejátszanivaló?
+                if (0 != playlist.SelectedRows.Count)
                 {
                     // create the stream
                     _stream = Bass.BASS_StreamCreateFile(trackList[playlist.SelectedRows[0].Index].filename, 0, 0, BASSFlag.BASS_SAMPLE_FLOAT | BASSFlag.BASS_STREAM_PRESCAN);
@@ -248,7 +257,7 @@ namespace Reverb
                     if (0 != _stream && Bass.BASS_ChannelPlay(_stream, false))
                     {
                         Bass.BASS_ChannelSetAttribute(_stream, BASSAttribute.BASS_ATTRIB_VOL, volumeBar.Value / 100F); //Induljunk a hangerőszabályozó hangerejével
-                        NextTrackSyncHandle = Bass.BASS_ChannelSetSync(_stream, BASSSync.BASS_SYNC_END | BASSSync.BASS_SYNC_MIXTIME, 0, nexttrack, IntPtr.Zero); //Következő számra ugrás sync
+                        Bass.BASS_ChannelSetSync(_stream, BASSSync.BASS_SYNC_END | BASSSync.BASS_SYNC_ONETIME, 0, nexttrack, IntPtr.Zero); //Következő számra ugrás sync
 
                         _updateTimer.Start();
 
@@ -258,11 +267,11 @@ namespace Reverb
 
                         if (this.InvokeRequired) this.Invoke((MethodInvoker)delegate
                         {
-                            playlist_play.Visible = true; playlist_pause.Visible = false;
+                            playlist_play.Visible = false; playlist_pause.Visible = true;
                         });
                         else
                         {
-                            playlist_play.Visible = true; playlist_pause.Visible = false;
+                            playlist_play.Visible = false; playlist_pause.Visible = true;
                         }
                     }
                     else
@@ -277,10 +286,12 @@ namespace Reverb
         private void playlist_stop_Click(object sender, EventArgs e)
         {
             //Megnézzük van-e mit leállítani
-            if (Bass.BASS_ChannelIsActive(_stream) != BASSActive.BASS_ACTIVE_STOPPED)
+            if (0 != _stream)
             {
-                Bass.BASS_ChannelStop(_stream);
-                _updateTimer.Stop();
+                if (_updateTimer.Enabled) _updateTimer.Stop();
+                if (Bass.BASS_ChannelIsActive(_stream) != BASSActive.BASS_ACTIVE_STOPPED) Bass.BASS_ChannelStop(_stream);
+                Bass.BASS_StreamFree(_stream);
+                _stream = 0;
 
                 if (this.InvokeRequired) this.Invoke((MethodInvoker)delegate
                 {
@@ -302,10 +313,6 @@ namespace Reverb
                     time_position.Text = time_length.Text = "00:00";
                     seekBar.Value = 0;
                 }
-
-                Bass.BASS_ChannelRemoveSync(_stream, NextTrackSyncHandle);
-                Bass.BASS_StreamFree(_stream);
-                _stream = 0;
             }
         }
 
@@ -346,6 +353,7 @@ namespace Reverb
         private void playlist_forward_Click(object sender, EventArgs e)
         {
             playlist_stop_Click(null, EventArgs.Empty);
+            
             if (playlist.InvokeRequired) playlist.Invoke((MethodInvoker)delegate
             {
                 playlist.CurrentCell = playlist[0, playlist.CurrentRow.Index + 1];
@@ -369,10 +377,8 @@ namespace Reverb
 
         private void Click_VolumeBar(object sender, MouseEventArgs e)
         {
-            if (0 == _stream)
-                return;
-
-            if (Bass.BASS_ChannelSetAttribute(_stream, BASSAttribute.BASS_ATTRIB_VOL, e.X / 100F))
+            //Ha _stream == 0, akkor meg se probálja állítgatni a csatornát, csak a progressbart
+            if (0 == _stream || Bass.BASS_ChannelSetAttribute(_stream, BASSAttribute.BASS_ATTRIB_VOL, e.X / 100F))
             {
                 volumeBar.Value = e.X;
             }
