@@ -48,7 +48,7 @@ namespace Reverb
             while (!Disconnecting)
             {
                 try {
-                _socket.Receive(buffer);
+                /*_socket.Receive(buffer);*/
                 }
                 catch (SocketException e)
                 {
@@ -74,7 +74,7 @@ namespace Reverb
                     {
                         //blabla feldolgozás
                         receiving = false;
-                        buffer = null;
+                        /*buffer = null;*/
                     }
                 }
 
@@ -169,6 +169,7 @@ namespace Reverb
         //Konstruktor
         public NetBackend()
         {
+            return;
             //A felénk érkező kapcsolatok után hallgatózó Thread elindítása
             Thread _ListenerThread = new Thread(ListenerThread);
             _ListenerThread.Start();

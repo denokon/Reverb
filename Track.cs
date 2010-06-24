@@ -2,16 +2,25 @@
 using System.Collections.Generic;
 using System.Text;
 using Un4seen.Bass.AddOn.Tags;
+using Un4seen.Bass;
+using System.ComponentModel;
 
 namespace Reverb
 {
-    class Track
+    class Track : INotifyPropertyChanged
     {
-        public bool Parsed { get; private set; }
-        public TAG_INFO TrackInfo { get; private set; }
+        private TAG_INFO TrackInfo;
 
-        public Track() {}
+        public bool parsed = false;
+        public string length { get { return Utils.FixTimespan(TrackInfo.duration, "MMSS"); } }
+        public string filename { get { return TrackInfo.filename; } }
+        public string asstring { get { return TrackInfo.ToString(); } }
+        public override string ToString() { return TrackInfo.ToString(); }
 
+        public event PropertyChangedEventHandler PropertyChanged;
+
+        private Track() { }
+        
         public Track(string FileName)
         {
             TrackInfo = new TAG_INFO(FileName);
@@ -24,9 +33,20 @@ namespace Reverb
             return t;
         }
 
-        public override string ToString()
+        internal void Init()
         {
-            return TrackInfo.ToString();
+            if (!parsed)
+            {
+                TrackInfo = BassTags.BASS_TAG_GetFromFile(TrackInfo.filename) ?? TrackInfo;
+                NotifyPropertyChanged("asstring");
+                NotifyPropertyChanged("duration");
+            }
+        }
+
+        private void NotifyPropertyChanged(string name)
+        {
+            if (PropertyChanged != null)
+                PropertyChanged(this, new PropertyChangedEventArgs(name));
         }
     }
 }
